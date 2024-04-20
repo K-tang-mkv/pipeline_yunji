@@ -160,7 +160,7 @@ extern "C"
 
     typedef struct _image_t
     {
-        unsigned long long int pPhy;
+        unsigned long long int pPhy; // image physical address
         void *pVir;
         unsigned int nSize;
         unsigned int nWidth;

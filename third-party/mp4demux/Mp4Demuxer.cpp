@@ -68,6 +68,7 @@ static int read_callback(int64_t offset, void *buffer, size_t size, void *token)
     return to_copy != size;
 }
 
+// Read whole video to memory
 void pth_demux(Mp4DemuxerHandle *handle)
 {
 #if ENABLE_MMAP

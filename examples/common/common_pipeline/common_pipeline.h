@@ -196,15 +196,15 @@ extern "C"
 
         int n_vin_chn; // lower than 3
 
-        pipeline_vdec_config_t m_vdec_attr;
+        pipeline_vdec_config_t m_vdec_attr; // pipeline decodeing attribute
 
-        pipeline_ivps_config_t m_ivps_attr;
+        pipeline_ivps_config_t m_ivps_attr; // pipeline ivps attribute
+ 
+        pipeline_venc_config_t m_venc_attr; // pipeline encoding attribute
+    
+        pipeline_vo_config_t m_vo_attr;     // pipeline vo output attribute
 
-        pipeline_venc_config_t m_venc_attr;
-
-        pipeline_vo_config_t m_vo_attr;
-
-        pipeline_frame_callback_func output_func;
+        pipeline_frame_callback_func output_func; 
 
     } pipeline_t;
 

@@ -53,21 +53,21 @@ int axdl_parse_param_init(char *json_file_path, void **pModels)
     f.close();
 
     std::string strModelType;
-    int mt = ax_model_base::get_model_type(&jsondata, strModelType);
+    int mt = ax_model_base::get_model_type(&jsondata, strModelType); // get config model type, det, or cls, or pose
     if (mt == MT_UNKNOWN)
     {
         ALOGE("unknown model type: %s", strModelType.c_str());
         return -1;
     }
     *pModels = new ax_model_handle_t;
-    ax_model_base *model = (ax_model_base *)OBJFactory::getInstance().getObjectByID(mt);
+    ax_model_base *model = (ax_model_base *)OBJFactory::getInstance().getObjectByID(mt); // here is MT_DET_YOLOV5
     if (model == nullptr)
     {
         ALOGE("create model failed mt=%d", mt);
         return -1;
     }
 
-    ((ax_model_handle_t *)(*pModels))->model.reset(model);
+    ((ax_model_handle_t *)(*pModels))->model.reset(model); // make pModels be model
     int ret = ((ax_model_handle_t *)(*pModels))->model->init(&jsondata);
     bool track_enable = ax_model_base::get_track_enable(&jsondata);
     if (ret == 0 && track_enable)
@@ -170,6 +170,7 @@ int axdl_get_letterbox_enable(void *pModels)
     return ((ax_model_handle_t *)pModels)->model->get_letter_box_enable() ? 1 : 0;
 }
 
+// execute inference with model and frame and return results
 int axdl_inference(void *pModels, axdl_image_t *pstFrame, axdl_results_t *pResults)
 {
     if (!(ax_model_handle_t *)(pModels) || !((ax_model_handle_t *)(pModels))->model.get())
@@ -178,6 +179,7 @@ int axdl_inference(void *pModels, axdl_image_t *pstFrame, axdl_results_t *pResul
     }
     std::lock_guard<std::mutex> locker(((ax_model_handle_t *)pModels)->locker);
     pResults->mModelType = ((ax_model_handle_t *)pModels)->model->get_model_type();
+    // inference here
     int ret = ((ax_model_handle_t *)pModels)->model->inference(pstFrame, nullptr, pResults);
     if (ret)
     {
@@ -185,6 +187,7 @@ int axdl_inference(void *pModels, axdl_image_t *pstFrame, axdl_results_t *pResul
     }
     int width, height;
     ((ax_model_handle_t *)pModels)->model->get_det_restore_resolution(width, height);
+    // post process
     for (int i = 0; i < pResults->nObjSize; i++)
     {
         pResults->mObjects[i].bbox.x /= width;

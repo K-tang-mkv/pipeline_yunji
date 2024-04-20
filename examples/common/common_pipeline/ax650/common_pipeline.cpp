@@ -160,6 +160,7 @@ int create_pipeline(pipeline_t *pipe)
         return -1;
     }
 
+    // check whether this pipeline was created before, avoid creating again
     if (contain(pipeline_handle.pipeid_pipe, pipe->pipeid))
     {
         ALOGE("PIPE-%d has been create", pipe->pipeid);

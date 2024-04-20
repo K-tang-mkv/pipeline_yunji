@@ -55,12 +55,12 @@ static struct _g_sample_
     struct _model
     {
         int bRunJoint;
-        void *gModel;
+        void *gModel; // ax_model_base
         ax_osd_helper osd_helper;
         std::vector<pipeline_t *> pipes_need_osd;
     } gModels[model_max_count];
 
-    std::map<int, _model *> osd_target_map;
+    std::map<int, _model *> osd_target_map; // pipeline_ID -> model
     void Init()
     {
         for (size_t i = 0; i < model_max_count; i++)
@@ -88,6 +88,7 @@ static struct _g_sample_
     }
 } g_sample;
 
+// using buffer data to inference
 void ai_inference_func(pipeline_buffer_t *buff)
 {
     pipeline_t *pipe = (pipeline_t *)buff->p_pipe;
@@ -116,12 +117,14 @@ void ai_inference_func(pipeline_buffer_t *buff)
         tSrcFrame.tStride_W = buff->n_stride;
         tSrcFrame.nSize = buff->n_size;
 
+        // gModel is ax_model_base class
         axdl_inference(g_sample.osd_target_map[pipe->pipeid]->gModel, &tSrcFrame, &mResults[pipe->pipeid]);
         // ALOGI("pipe=%d detect%d", pipe->pipeid, mResults[pipe->pipeid].nObjSize);
         g_sample.osd_target_map[pipe->pipeid]->osd_helper.Update(&mResults[pipe->pipeid]);
     }
 }
 
+// 解复用回调函数
 void _demux_frame_callback(const void *buff, int len, void *reserve)
 {
     if (len == 0)
@@ -236,7 +239,7 @@ int main(int argc, char *argv[])
     };
 #elif defined(AXERA_TARGET_CHIP_AX650)
     COMMON_SYS_POOL_CFG_T poolcfg[] = {
-        {1920, 1088, 1920, AX_FORMAT_YUV420_SEMIPLANAR, uint32_t(config_files.size() * 15)},
+        {1920, 1088, 1920, AX_FORMAT_YUV420_SEMIPLANAR, uint32_t(config_files.size() * 60)},
     };
 #endif
     tCommonArgs.nPoolCfgCnt = 1;
@@ -271,26 +274,31 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    // pipelines number equals config_files number
     vpipelines.resize(config_files.size());
 
     pipeline_t pipe_init_hdmi{0};
-    pipe_init_hdmi.enable = 1;
-    pipe_init_hdmi.m_output_type = po_vo_hdmi;
-    pipe_init_hdmi.m_vo_attr.hdmi.e_hdmi_type = phv_1920x1080p60;
-    pipe_init_hdmi.m_vo_attr.hdmi.n_vo_count = config_files.size();
+    pipe_init_hdmi.enable = 1; // enable pipeline
+    // define some attributes of pipeline
+    pipe_init_hdmi.m_output_type = po_vo_hdmi; // pipeline output type using hdmi
+    // define some output attribute
+    pipe_init_hdmi.m_vo_attr.hdmi.e_hdmi_type = phv_1920x1080p60; 
+    pipe_init_hdmi.m_vo_attr.hdmi.n_vo_count = config_files.size(); // vo output count is up to models count
     pipe_init_hdmi.m_vo_attr.hdmi.n_frame_rate = s_sample_framerate;
-    pipe_init_hdmi.m_vo_attr.hdmi.portid = 0;
+    pipe_init_hdmi.m_vo_attr.hdmi.portid = 0; // using hdmi 0 to ouput
 
+    // check if pipeline was created before
+    // init input and output attribute 
     s32Ret = create_pipeline(&pipe_init_hdmi);
     if (s32Ret != 0)
     {
         return -1;
     }
 
-    for (size_t i = 0; i < config_files.size(); i++)
+    for (size_t i = 0; i < config_files.size(); i++) // each config_file contains a model
     {
 
-        s32Ret = axdl_parse_param_init((char *)config_files[i].c_str(), &g_sample.gModels[i].gModel);
+        s32Ret = axdl_parse_param_init((char *)config_files[i].c_str(), &g_sample.gModels[i].gModel); // init gModel = MT_YOLOV5
         if (s32Ret != 0)
         {
             ALOGE("sample_parse_param_det failed,run joint skip");
@@ -308,11 +316,11 @@ int main(int argc, char *argv[])
 
         // 创建pipeline
         {
-            pipeline_t &pipe1 = pipelines[1];
+            pipeline_t &pipe1 = pipelines[1]; // pipe1 ivps, process image and inference
             {
                 pipeline_ivps_config_t &config1 = pipe1.m_ivps_attr;
                 config1.n_ivps_grp = pipe_count * i + 1; // 重复的会创建失败
-                config1.n_ivps_fps = 60;
+                config1.n_ivps_fps = 30;
                 config1.n_ivps_width = SAMPLE_IVPS_ALGO_WIDTH[i];
                 config1.n_ivps_height = SAMPLE_IVPS_ALGO_HEIGHT[i];
 
@@ -325,7 +333,7 @@ int main(int argc, char *argv[])
             pipe1.m_input_type = pi_vdec_h264;
             if (g_sample.gModels[i].gModel && g_sample.gModels[i].bRunJoint)
             {
-                switch (axdl_get_color_space(g_sample.gModels[i].gModel))
+                switch (axdl_get_color_space(g_sample.gModels[i].gModel)) // set pipeline output type
                 {
                 case axdl_color_space_rgb:
                     pipe1.m_output_type = po_buff_rgb;
@@ -343,9 +351,9 @@ int main(int argc, char *argv[])
             {
                 pipe1.enable = 0;
             }
-            pipe1.n_loog_exit = 0;
-            pipe1.m_vdec_attr.n_vdec_grp = i;
-            pipe1.output_func = ai_inference_func; // 图像输出的回调函数
+            pipe1.n_loog_exit = 0; // control pipeline exit
+            pipe1.m_vdec_attr.n_vdec_grp = i; // decoding group count
+            pipe1.output_func = ai_inference_func; // 图像输出的回调函数 ******* 当 pipeline_ivps_config_t::n_fifo_count 大于0时候，用作输出给用户
 
             pipeline_t &pipe0 = pipelines[0];
             {
@@ -397,12 +405,12 @@ int main(int argc, char *argv[])
     {
 
         VideoDemux *video_demux = new VideoDemux;
-        video_demux->Open(video_url, loopPlay, nullptr, nullptr, s_sample_framerate);
-        for (size_t i = 0; i < config_files.size(); i++)
+        video_demux->Open(video_url, loopPlay, nullptr, nullptr, s_sample_framerate); // get video to decode
+        for (size_t i = 0; i < config_files.size(); i++) 
         {
             auto &pipelines = vpipelines[i];
 
-            video_demux->AddCbs(_demux_frame_callback, &pipelines[0]);
+            video_demux->AddCbs(_demux_frame_callback, &pipelines[0]); // callback video demux
             // video_handles.push_back(handle);
         }
 
@@ -425,6 +433,7 @@ int main(int argc, char *argv[])
     }
 
     // 销毁pipeline
+    // 在接收到退出信号后，停止视频解复用，删除相关对象，停止OSD帮助器，销毁管道，反初始化系统和模型，最后退出程序。
     {
         gLoopExit = 1;
         for (size_t i = 0; i < config_files.size(); i++)
